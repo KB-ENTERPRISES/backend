@@ -52,7 +52,7 @@ router.post('/', ...requireRole('ADMIN'), async (req, res) => {
 
   if (rawId && !/^[A-Za-z0-9_-]{1,60}$/.test(rawId))
     return res.status(400).json({ error: 'Product ID may only contain letters, numbers, hyphens, and underscores' });
-  if (!rawName || !price || !rawUnit)
+  if (!rawName || price == null || !rawUnit)
     return res.status(400).json({ error: 'Name, price, and unit are required' });
   if (rawName.length > 120)
     return res.status(400).json({ error: 'Name is too long (max 120 characters)' });
@@ -87,6 +87,9 @@ router.post('/', ...requireRole('ADMIN'), async (req, res) => {
 
     res.status(201).json({ id: pid, message: 'Product created' });
   } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Product ID already exists' });
+    }
     console.error('[POST /products]', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
@@ -99,7 +102,7 @@ router.put('/:id', ...requireRole('ADMIN'), async (req, res) => {
   const rawName = sanitizeText(name);
   const rawImg  = sanitizeText(img || '');
 
-  if (!rawName || !price)
+  if (!rawName || price == null)
     return res.status(400).json({ error: 'Name and price are required' });
   if (rawName.length > 120)
     return res.status(400).json({ error: 'Name is too long (max 120 characters)' });
@@ -116,7 +119,7 @@ router.put('/:id', ...requireRole('ADMIN'), async (req, res) => {
     const { rowCount } = await pool.query(
       `UPDATE products
        SET name = $1, img = $2, price = $3, case_price = $4, pieces_per_case = $5
-       WHERE id = $6`,
+       WHERE id = $6 AND deleted = false`,
       [rawName, rawImg, price, casePrice || null, piecesPerCase || null, id]
     );
     if (!rowCount) return res.status(404).json({ error: 'Product not found' });
@@ -137,7 +140,7 @@ router.patch('/:id/stock', ...requireRole('ADMIN'), async (req, res) => {
 
   try {
     const { rowCount } = await pool.query(
-      `UPDATE products SET in_stock = $1 WHERE id = $2`,
+      `UPDATE products SET in_stock = $1 WHERE id = $2 AND deleted = false`,
       [inStock, id]
     );
     if (!rowCount) return res.status(404).json({ error: 'Product not found' });
@@ -153,7 +156,7 @@ router.delete('/:id', ...requireRole('ADMIN'), async (req, res) => {
   const { id } = req.params;
   try {
     const { rowCount } = await pool.query(
-      `UPDATE products SET deleted = true WHERE id = $1`,
+      `UPDATE products SET deleted = true WHERE id = $1 AND deleted = false`,
       [id]
     );
     if (!rowCount) return res.status(404).json({ error: 'Product not found' });

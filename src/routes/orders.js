@@ -124,26 +124,25 @@ router.post('/', requireAuth, async (req, res) => {
   const userId = req.user.role === 'CREW' ? null : (req.user.id || null);
   const client = await pool.connect();
 
-  const productIds = items.map(i => i.productId);
-  const { rows: products } = await client.query(
-    `SELECT id, name, price FROM products WHERE id = ANY($1) AND in_stock = true AND deleted = false`,
-    [productIds]
-  );
-  const productMap = new Map(products.map(p => [p.id, p]));
-
-  for (const item of items) {
-    if (!productMap.has(item.productId)) {
-      client.release();
-      return res.status(400).json({ error: `Product "${item.productId}" is unavailable or out of stock` });
-    }
-  }
-
-  const total = items.reduce((sum, item) => {
-    const product = productMap.get(item.productId);
-    return sum + Number(product.price) * item.qty;
-  }, 0);
-
   try {
+    const productIds = items.map(i => i.productId);
+    const { rows: products } = await client.query(
+      `SELECT id, name, price FROM products WHERE id = ANY($1) AND in_stock = true AND deleted = false`,
+      [productIds]
+    );
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    for (const item of items) {
+      if (!productMap.has(item.productId)) {
+        return res.status(400).json({ error: `Product "${item.productId}" is unavailable or out of stock` });
+      }
+    }
+
+    const total = items.reduce((sum, item) => {
+      const product = productMap.get(item.productId);
+      return sum + Number(product.price) * item.qty;
+    }, 0);
+
     await client.query('BEGIN');
 
     const orderId = await generateOrderId(client);
@@ -290,7 +289,7 @@ router.get('/stats', ...requireRole('ADMIN'), async (req, res) => {
       pending:     parseInt(s.pending),
       accepted:    parseInt(s.accepted),
       completed:   parseInt(s.completed),
-      revenue:     parseInt(s.revenue),
+      revenue:     parseFloat(s.revenue),
       date,
     });
   } catch (err) {
@@ -362,6 +361,15 @@ router.patch('/:id/assign', ...requireRole('ADMIN'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const { rows: crewRows } = await client.query(
+      `SELECT crew_id FROM crew WHERE crew_id = $1`,
+      [crewId]
+    );
+    if (!crewRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Crew member not found' });
+    }
 
     const { rows } = await client.query(
       `UPDATE orders

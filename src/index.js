@@ -25,7 +25,7 @@ if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET is not set in .env — server cannot start safely.');
   process.exit(1);
 }
-if (!process.env.DB_NAME || !process.env.DB_USER || !process.env.DB_PASSWORD) {
+if (!process.env.DATABASE_URL && (!process.env.DB_NAME || !process.env.DB_USER || !process.env.DB_PASSWORD)) {
   console.error('FATAL: Database credentials missing in .env');
   process.exit(1);
 }
@@ -38,8 +38,15 @@ if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_ORIGIN) {
 app.use(helmet());
 
 // ── CORS ──────────────────────────────────────────────────────────────
-const allowedOrigins = [
+const configuredOrigins = [
   process.env.FRONTEND_ORIGIN,
+  process.env.FRONTEND_ORIGINS,
+]
+  .filter(Boolean)
+  .flatMap(value => value.split(',').map(origin => origin.trim()).filter(Boolean));
+
+const allowedOrigins = [
+  ...configuredOrigins,
   ...(process.env.NODE_ENV !== 'production' ? [
     'http://localhost:3000',
     'http://localhost:5500',

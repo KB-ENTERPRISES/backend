@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS orders (
   eta               TEXT        NOT NULL DEFAULT '',
   status            TEXT        NOT NULL DEFAULT 'PENDING',
   assigned_crew_id  TEXT        REFERENCES crew(crew_id),
-  total             INTEGER     NOT NULL DEFAULT 0,
+  total             NUMERIC     NOT NULL DEFAULT 0,
   payment_uploaded  BOOLEAN     NOT NULL DEFAULT FALSE,
   order_type        TEXT        NOT NULL DEFAULT 'train',
   stall_name        TEXT,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   product_id  TEXT        NOT NULL,
   name        TEXT        NOT NULL,
   qty         INTEGER     NOT NULL,
-  price       INTEGER     NOT NULL
+  price       NUMERIC     NOT NULL
 );
 
 -- ── Notifications ──────────────────────────────────────────────────
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS payment_screenshots (
   id              SERIAL      PRIMARY KEY,
   order_id        TEXT        NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   screenshot_url  TEXT        NOT NULL,
-  amount_paid     INTEGER     NOT NULL DEFAULT 0,
+  amount_paid     NUMERIC     NOT NULL DEFAULT 0,
   uploaded_by     TEXT        NOT NULL,
   uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -125,6 +125,9 @@ ALTER TABLE crew ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 ALTER TABLE payment_screenshots ADD COLUMN IF NOT EXISTS screenshot_url TEXT;
 ALTER TABLE payment_screenshots DROP COLUMN IF EXISTS screenshot_base64;
 ALTER TABLE payment_screenshots DROP COLUMN IF EXISTS file_name;
+ALTER TABLE orders ALTER COLUMN total TYPE NUMERIC USING total::numeric;
+ALTER TABLE order_items ALTER COLUMN price TYPE NUMERIC USING price::numeric;
+ALTER TABLE payment_screenshots ALTER COLUMN amount_paid TYPE NUMERIC USING amount_paid::numeric;
 `;
 
 async function initDb() {
