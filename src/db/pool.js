@@ -17,8 +17,8 @@ const poolConfig = process.env.DATABASE_URL ? {
 const pool = new Pool({
   ...poolConfig,
   max:                     parseInt(process.env.DB_POOL_MAX || '20'),
-  idleTimeoutMillis:       30000,
-  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis:       10000,
+  connectionTimeoutMillis: 5000,
   statement_timeout:       30000,
   application_name:        'kb-enterprises-backend',
   ssl: ((databaseUrl && !isLocalDatabaseUrl) || (process.env.DB_HOST && process.env.DB_HOST !== 'localhost'))

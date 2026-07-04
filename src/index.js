@@ -75,6 +75,15 @@ app.use('/api/auth/login',      authLimiter);
 app.use('/api/auth/crew-login', authLimiter);
 app.use('/api/auth/register',   authLimiter);
 
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/orders', orderLimiter);
+
 // ── Body parsing ──────────────────────────────────────────────────────
 app.use(express.json({ limit: '15mb' }));
 
