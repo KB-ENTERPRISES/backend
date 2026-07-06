@@ -69,7 +69,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
           o.assigned_crew_id, o.payment_uploaded, o.accepted_at, o.completed_at,
           EXTRACT(EPOCH FROM (o.accepted_at - o.created_at))   AS accept_secs,
           EXTRACT(EPOCH FROM (o.completed_at - o.accepted_at)) AS deliver_secs,
-          c.name AS crew_name, u.email AS user_email
+          c.name AS crew_name, u.email AS user_email, u.phone AS user_phone
         FROM orders o
         LEFT JOIN crew c ON c.crew_id = o.assigned_crew_id
         LEFT JOIN users u ON u.id = o.user_id
