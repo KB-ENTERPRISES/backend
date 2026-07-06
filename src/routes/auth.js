@@ -58,11 +58,11 @@ if (!/^[6-9]\d{9}$/.test(rawPhone))
   try {
     const hash      = await bcrypt.hash(rawPassword, 10);
     const { rows }  = await pool.query(
-      `INSERT INTO users (first_name, last_name, email, password, role)
-       VALUES ($1, $2, $3, $4, 'USER')
-       RETURNING id, first_name, last_name, email, role`,
-      [rawFirstName, rawLastName, rawEmail, hash]
-    );
+  `INSERT INTO users (first_name, last_name, email, phone, password, role)
+   VALUES ($1, $2, $3, $4, $5, 'USER')
+   RETURNING id, first_name, last_name, email, phone, role`,
+  [rawFirstName, rawLastName, rawEmail, rawPhone, hash]
+  );
     const u     = rows[0];
     const name  = `${u.first_name} ${u.last_name}`.trim();
     const token = makeToken({ id: u.id, email: u.email, role: u.role, name });
