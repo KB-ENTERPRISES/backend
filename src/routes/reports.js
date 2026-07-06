@@ -209,6 +209,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       { header: 'Order Type',          key: 'orderType',     width: 12 },
       { header: 'Customer',            key: 'customer',      width: 20 },
       { header: 'Customer Email',      key: 'email',         width: 26 },
+      { header: 'Customer Phone',      key: 'phone',         width: 16 },
       { header: 'Train No',            key: 'trainNo',       width: 10 },
       { header: 'Train Name',          key: 'trainName',     width: 18 },
       { header: 'Stall Name',          key: 'stallName',     width: 18 },
@@ -239,6 +240,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
         orderType:     (o.order_type || 'train').toUpperCase(),
         customer:      o.user_name,
         email:         o.user_email || '',
+        phone:         o.user_phone || '',
         trainNo:       o.order_type === 'train' ? o.train_no : '',
         trainName:     o.order_type === 'train' ? o.train_name : '',
         stallName:     o.stall_name     || '',
@@ -358,6 +360,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       { header: 'First Name', key: 'first', width: 16 },
       { header: 'Last Name',  key: 'last',  width: 16 },
       { header: 'Email',      key: 'email', width: 28 },
+      { header: 'Phone',      key: 'phone', width: 16 },
       { header: 'Role',       key: 'role',  width: 12 },
     ]);
     signups.forEach((u, idx) => {
@@ -366,6 +369,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
         first: u.first_name,
         last:  u.last_name,
         email: u.email,
+        phone: u.phone || '',
         role:  u.role,
       });
       styleBodyRow(row, idx % 2 ? 'FFF7F7F8' : null);
@@ -442,7 +446,7 @@ router.get('/daily-json', ...requireRole('ADMIN'), async (req, res) => {
       `, [dateStart, dateEnd]),
 
       pool.query(`
-        SELECT first_name, last_name, email, created_at
+        SELECT first_name, last_name, email, phone, role, created_at
         FROM users
         WHERE created_at BETWEEN $1 AND $2
         ORDER BY created_at
