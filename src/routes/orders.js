@@ -37,6 +37,7 @@ async function fetchOrders(whereClause = '', params = []) {
        o.id,
        o.user_id           AS "userId",
        o.user_name         AS "userName",
+       u.phone             AS "userPhone",
        o.train_no          AS "trainNo",
        o.train_name        AS "trainName",
        o.current_location  AS "currentLocation",
@@ -54,6 +55,7 @@ async function fetchOrders(whereClause = '', params = []) {
        EXTRACT(EPOCH FROM (o.accepted_at - o.created_at))    AS "acceptanceDurationSeconds",
        EXTRACT(EPOCH FROM (o.completed_at - o.accepted_at))  AS "deliveryDurationSeconds"
      FROM orders o
+     LEFT JOIN users u ON u.id = o.user_id
      ${whereClause}
      ORDER BY o.created_at DESC`,
     params
