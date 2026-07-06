@@ -426,9 +426,10 @@ router.get('/daily-json', ...requireRole('ADMIN'), async (req, res) => {
         SELECT
           o.id, o.created_at, o.order_type, o.user_name, o.train_no, o.train_name,
           o.stall_name, o.stall_location, o.current_location, o.eta, o.status, o.total,
-          o.assigned_crew_id, c.name AS crew_name
+          o.assigned_crew_id, c.name AS crew_name, u.phone AS user_phone
         FROM orders o
         LEFT JOIN crew c ON c.crew_id = o.assigned_crew_id
+        LEFT JOIN users u ON u.id = o.user_id
         WHERE o.created_at BETWEEN $1 AND $2
         ORDER BY o.created_at
       `, [dateStart, dateEnd]),
