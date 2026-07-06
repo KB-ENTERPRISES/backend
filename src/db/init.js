@@ -115,6 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_order          ON audit_logs(order_id)
 // Safe migrations — runs on every start but ADD COLUMN IF NOT EXISTS is idempotent.
 // Handles existing databases that still have old columns.
 const MIGRATIONS = `
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_type     TEXT NOT NULL DEFAULT 'train';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS stall_name     TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS stall_location TEXT;
