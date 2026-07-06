@@ -32,14 +32,16 @@ router.get('/crew-list', async (req, res) => {
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { firstName, lastName = '', email, password } = req.body;
-  const rawFirstName = sanitizeText(firstName || '');
-  const rawLastName  = sanitizeText(lastName || '');
-  const rawEmail     = String(email || '').toLowerCase().trim();
-  const rawPassword  = String(password || '');
-
-  if (!rawFirstName || !rawEmail || !rawPassword)
-    return res.status(400).json({ error: 'firstName, email and password are required' });
+  const { firstName, lastName = '', email, password, phone } = req.body;
+const rawFirstName = sanitizeText(firstName || '');
+const rawLastName  = sanitizeText(lastName || '');
+const rawEmail     = String(email || '').toLowerCase().trim();
+const rawPassword  = String(password || '');
+const rawPhone     = String(phone || '').trim();
+if (!rawFirstName || !rawEmail || !rawPassword || !rawPhone)
+  return res.status(400).json({ error: 'firstName, email, phone and password are required' });
+if (!/^[6-9]\d{9}$/.test(rawPhone))
+  return res.status(400).json({ error: 'Enter a valid 10-digit mobile number (no +91, no spaces)' });
   if (rawFirstName.length > 60 || rawLastName.length > 60)
     return res.status(400).json({ error: 'Name is too long (max 60 characters)' });
   if (rawEmail.length > 150)
