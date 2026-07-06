@@ -167,6 +167,7 @@ router.get('/all', ...requireRole('ADMIN'), async (req, res) => {
       `SELECT id,
               CONCAT(first_name, ' ', last_name) AS name,
               email,
+              phone,
               role,
               created_at AS "createdAt"
        FROM users
