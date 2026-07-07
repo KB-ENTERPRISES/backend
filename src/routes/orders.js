@@ -49,6 +49,8 @@ async function fetchOrders(whereClause = '', params = []) {
        o.assigned_crew_id  AS "assignedCrewId",
        o.total,
        o.payment_uploaded  AS "paymentUploaded",
+       o.delivery_note     AS "deliveryNote",
+       o.original_total    AS "originalTotal",
        o.created_at        AS "createdAt",
        o.accepted_at       AS "acceptedAt",
        o.completed_at      AS "completedAt",
@@ -60,11 +62,12 @@ async function fetchOrders(whereClause = '', params = []) {
      ORDER BY o.created_at DESC`,
     params
   );
-
+  
   if (!rows.length) return [];
   const ids = rows.map(r => r.id);
   const { rows: items } = await pool.query(
-    `SELECT order_id AS "orderId", product_id AS "productId", name, qty, price
+    `SELECT order_id AS "orderId", product_id AS "productId", name, qty, price,
+            delivered_qty AS "deliveredQty"
      FROM order_items
      WHERE order_id = ANY($1)`,
     [ids]
@@ -420,7 +423,7 @@ router.patch('/:id/assign', ...requireRole('ADMIN'), async (req, res) => {
 // marks the order as COMPLETED in the same transaction.
 router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (req, res) => {
   const { id } = req.params;
-  const { screenshotUrl, amountPaid = 0 } = req.body;
+  const { screenshotUrl, amountPaid = 0, deliveredItems, description = '' } = req.body;
 
   if (!screenshotUrl) {
     return res.status(400).json({ error: 'screenshotUrl is required' });
@@ -429,7 +432,6 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
     return res.status(400).json({ error: 'Screenshot URL is too long' });
   }
 
-  // Validate URL format
   let parsedUrl;
   try {
     parsedUrl = new URL(screenshotUrl);
@@ -440,7 +442,6 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
     return res.status(400).json({ error: 'Screenshot URL must use http or https' });
   }
 
-  // Allow only trusted image hosts
   const allowedHosts = ['i.ibb.co', 'ibb.co', 'podu.pics', 'i.podu.pics'];
   const isAllowed = allowedHosts.some(h =>
     parsedUrl.hostname === h || parsedUrl.hostname.endsWith('.' + h)
@@ -454,6 +455,12 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
     return res.status(400).json({ error: 'Invalid amount' });
   }
 
+  if (!Array.isArray(deliveredItems) || !deliveredItems.length) {
+    return res.status(400).json({ error: 'deliveredItems is required' });
+  }
+
+  const rawDescription = String(description || '').trim().slice(0, 500);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -466,11 +473,46 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order not found or not assigned to you' });
     }
+    const originalTotal = Number(orderRows[0].total);
 
-    const officialTotal = Number(orderRows[0].total);
-    if (Math.abs(paid - officialTotal) > 0.01) {
+    const { rows: orderItemRows } = await client.query(
+      `SELECT product_id, name, qty, price FROM order_items WHERE order_id = $1`,
+      [id]
+    );
+    if (!orderItemRows.length) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Amount does not match order total (expected Rs.${officialTotal})` });
+      return res.status(400).json({ error: 'No items found for this order' });
+    }
+    const itemMap = new Map(orderItemRows.map(i => [i.product_id, i]));
+
+    let deliveredTotal = 0;
+    const validatedDeliveries = [];
+    for (const d of deliveredItems) {
+      const pid = String(d.productId || '');
+      const orderItem = itemMap.get(pid);
+      if (!orderItem) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Item "${pid}" does not belong to this order` });
+      }
+      const deliveredQty = Number(d.deliveredQty);
+      if (!Number.isInteger(deliveredQty) || deliveredQty < 0 || deliveredQty > orderItem.qty) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Invalid delivered quantity for ${orderItem.name}` });
+      }
+      deliveredTotal += deliveredQty * Number(orderItem.price);
+      validatedDeliveries.push({ productId: pid, deliveredQty });
+    }
+
+    if (Math.abs(paid - deliveredTotal) > 0.01) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Amount does not match deliverable total (expected Rs.${deliveredTotal.toFixed(2)})` });
+    }
+
+    for (const d of validatedDeliveries) {
+      await client.query(
+        `UPDATE order_items SET delivered_qty = $1 WHERE order_id = $2 AND product_id = $3`,
+        [d.deliveredQty, id, d.productId]
+      );
     }
 
     await client.query(
@@ -480,27 +522,33 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
       [id, screenshotUrl, paid, req.user.name]
     );
 
-    // Atomically mark order complete in the same transaction
     const { rows } = await client.query(
       `UPDATE orders
-       SET payment_uploaded = TRUE, status = 'COMPLETED', completed_at = NOW()
+       SET payment_uploaded = TRUE,
+           status = 'COMPLETED',
+           completed_at = NOW(),
+           original_total = COALESCE(original_total, total),
+           total = $4,
+           delivery_note = $5
        WHERE id = $1 AND (assigned_crew_id = $2 OR $3 = 'ADMIN')
        RETURNING *`,
-      [id, req.user.crewId || null, req.user.role]
+      [id, req.user.crewId || null, req.user.role, deliveredTotal, rawDescription || null]
     );
     if (!rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order not found or not assigned to you' });
     }
 
+    const isPartial = deliveredTotal < originalTotal - 0.01;
     await client.query(
       `INSERT INTO audit_logs (order_id, event, performed_by, note)
-       VALUES ($1, 'COMPLETED', $2, 'Order completed with payment screenshot')`,
-      [id, req.user.name]
+       VALUES ($1, 'COMPLETED', $2, $3)`,
+      [id, req.user.name, isPartial
+        ? `Order completed with partial delivery (Rs.${deliveredTotal.toFixed(2)} of Rs.${originalTotal.toFixed(2)})${rawDescription ? ' — ' + rawDescription : ''}`
+        : 'Order completed with payment screenshot']
     );
 
     const o = rows[0];
-    // Notify user with receipt link
     if (o.user_id) {
       await client.query(
         `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
@@ -508,7 +556,6 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
       );
     }
 
-    // Notify all admins with receipt link
     const { rows: admins } = await client.query(`SELECT id FROM users WHERE role = 'ADMIN'`);
     const actorName = sanitizeText(req.user.name || req.user.email || '');
     for (const admin of admins) {
