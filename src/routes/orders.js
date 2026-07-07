@@ -199,7 +199,7 @@ router.post('/', requireAuth, async (req, res) => {
     if (userId) {
       await client.query(
         `INSERT INTO notifications (user_id, message) VALUES ($1, $2)`,
-        [userId, `Your order ${orderId} has been successfully placed for Rs.${total}.`]
+        [userId, `SLIP:${orderId}:Your order ${orderId} has been successfully placed for Rs.${total}.`]
       );
     }
 
