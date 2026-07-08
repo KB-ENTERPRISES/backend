@@ -110,8 +110,28 @@ app.use((err, req, res, _next) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────
+// ── Screenshot retention cleanup ────────────────────────────────────────
+// Keeps amount_paid / uploaded_by / order_id / uploaded_at forever —
+// only clears the actual image bytes once they're 31+ days old.
+async function cleanupExpiredScreenshots() {
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE payment_screenshots
+       SET screenshot_data = NULL, screenshot_mime = NULL
+       WHERE uploaded_at < NOW() - INTERVAL '31 days'
+         AND screenshot_data IS NOT NULL`
+    );
+    if (rowCount) console.log(`[cleanup] Cleared ${rowCount} expired payment screenshot(s) (31+ days old).`);
+  } catch (err) {
+    console.error('[cleanup] Failed to clear expired screenshots:', err.message);
+  }
+}
+
+// ── Start ─────────────────────────────────────────────────────────────
 (async () => {
   await initDb();
+  await cleanupExpiredScreenshots();
+  setInterval(cleanupExpiredScreenshots, 24 * 60 * 60 * 1000); // once a day
   const server = app.listen(PORT, () => {
     console.log(`KB ENTERPRISES backend running on port ${PORT}`);
     console.log(`Health: http://localhost:${PORT}/health`);
