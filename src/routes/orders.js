@@ -423,31 +423,19 @@ router.patch('/:id/assign', ...requireRole('ADMIN'), async (req, res) => {
 // marks the order as COMPLETED in the same transaction.
 router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (req, res) => {
   const { id } = req.params;
-  const { screenshotUrl, amountPaid = 0, deliveredItems, description = '' } = req.body;
+  const { screenshotBase64, amountPaid = 0, deliveredItems, description = '' } = req.body;
 
-  if (!screenshotUrl) {
-    return res.status(400).json({ error: 'screenshotUrl is required' });
+  if (!screenshotBase64) {
+    return res.status(400).json({ error: 'Payment screenshot is required' });
   }
-  if (screenshotUrl.length > 500) {
-    return res.status(400).json({ error: 'Screenshot URL is too long' });
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/.exec(screenshotBase64);
+  if (!match) {
+    return res.status(400).json({ error: 'Invalid image format' });
   }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(screenshotUrl);
-  } catch {
-    return res.status(400).json({ error: 'Invalid URL format' });
-  }
-  if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
-    return res.status(400).json({ error: 'Screenshot URL must use http or https' });
-  }
-
-  const allowedHosts = ['i.ibb.co', 'ibb.co', 'podu.pics', 'i.podu.pics'];
-  const isAllowed = allowedHosts.some(h =>
-    parsedUrl.hostname === h || parsedUrl.hostname.endsWith('.' + h)
-  );
-  if (!isAllowed) {
-    return res.status(400).json({ error: 'Screenshot URL must be from imgbb.com or podu.pics' });
+  const mime = match[1] === 'image/jpg' ? 'image/jpeg' : match[1];
+  const imageBuffer = Buffer.from(match[2], 'base64');
+  if (imageBuffer.length > 8 * 1024 * 1024) {
+    return res.status(400).json({ error: 'Screenshot is too large (max 8MB)' });
   }
 
   const paid = Number(amountPaid);
@@ -517,9 +505,9 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
 
     await client.query(
       `INSERT INTO payment_screenshots
-         (order_id, screenshot_url, amount_paid, uploaded_by)
-       VALUES ($1, $2, $3, $4)`,
-      [id, screenshotUrl, paid, req.user.name]
+         (order_id, screenshot_data, screenshot_mime, amount_paid, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, imageBuffer, mime, paid, req.user.name]
     );
 
     const { rows } = await client.query(
@@ -575,6 +563,8 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
     client.release();
   }
 });
+
+
 
 // ── PATCH /orders/:id/complete ───────────────────────────────────────
 // Admin-only manual completion (no screenshot required)
@@ -690,7 +680,7 @@ router.get('/admin/payments', ...requireRole('ADMIN'), async (req, res) => {
       `SELECT
          p.id,
          p.order_id          AS "orderId",
-         p.screenshot_url    AS "screenshotUrl",
+         (p.screenshot_data IS NOT NULL) AS "hasScreenshot",
          p.amount_paid       AS "amountPaid",
          p.uploaded_by       AS "uploadedBy",
          p.uploaded_at       AS "uploadedAt"
@@ -702,6 +692,32 @@ router.get('/admin/payments', ...requireRole('ADMIN'), async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /orders/admin/payments]', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ── GET /orders/payments/:id/image ───────────────────────────────────
+// Streams the raw screenshot bytes. Auth-protected (not a public URL).
+router.get('/payments/:id/image', ...requireRole('CREW', 'ADMIN'), async (req, res) => {
+  const paymentId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(paymentId) || paymentId < 1) {
+    return res.status(400).json({ error: 'Invalid payment ID' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT screenshot_data, screenshot_mime
+       FROM payment_screenshots
+       WHERE id = $1`,
+      [paymentId]
+    );
+    if (!rows.length || !rows[0].screenshot_data) {
+      return res.status(404).json({ error: 'Screenshot not available (it may have expired after 31 days)' });
+    }
+    res.setHeader('Content-Type', rows[0].screenshot_mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(rows[0].screenshot_data);
+  } catch (err) {
+    console.error('[GET /orders/payments/:id/image]', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
