@@ -126,9 +126,15 @@ ALTER TABLE crew ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAU
 ALTER TABLE crew ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 
 -- Migrate payment_screenshots from base64 to URL storage
+-- Migrate payment_screenshots from base64 to URL storage
 ALTER TABLE payment_screenshots ADD COLUMN IF NOT EXISTS screenshot_url TEXT;
 ALTER TABLE payment_screenshots DROP COLUMN IF EXISTS screenshot_base64;
 ALTER TABLE payment_screenshots DROP COLUMN IF EXISTS file_name;
+
+-- Migrate payment_screenshots back to storing images directly in the DB
+ALTER TABLE payment_screenshots ALTER COLUMN screenshot_url DROP NOT NULL;
+ALTER TABLE payment_screenshots ADD COLUMN IF NOT EXISTS screenshot_data BYTEA;
+ALTER TABLE payment_screenshots ADD COLUMN IF NOT EXISTS screenshot_mime TEXT;
 ALTER TABLE orders ALTER COLUMN total TYPE NUMERIC USING total::numeric;
 ALTER TABLE order_items ALTER COLUMN price TYPE NUMERIC USING price::numeric;
 ALTER TABLE payment_screenshots ALTER COLUMN amount_paid TYPE NUMERIC USING amount_paid::numeric;
