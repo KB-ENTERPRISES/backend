@@ -93,7 +93,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       `, [dateStart, dateEnd]),
 
       pool.query(`
-        SELECT p.order_id, p.amount_paid, p.uploaded_by, p.uploaded_at, p.screenshot_url
+        SELECT p.order_id, p.amount_paid, p.uploaded_by, p.uploaded_at, p.screenshot_data, p.screenshot_mime
         FROM payment_screenshots p
         INNER JOIN orders o ON o.id = p.order_id
         WHERE p.uploaded_at BETWEEN $1 AND $2
@@ -271,10 +271,14 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       row.height = 20;
 
       // Store screenshot as clickable hyperlink — no base64 embedding
-      if (payment?.screenshot_url) {
+      if (payment?.screenshot_data) {
         const cell = row.getCell('screenshot');
-        cell.value = { text: 'View Screenshot', hyperlink: payment.screenshot_url };
-        cell.font  = { ...BODY_FONT, color: { argb: 'FF0563C1' }, underline: true };
+        cell.value = 'See Payments sheet';
+        cell.font  = { ...BODY_FONT, italic: true, color: { argb: 'FF0563C1' } };
+      } else if (payment) {
+        const cell = row.getCell('screenshot');
+        cell.value = 'Expired (31+ days)';
+        cell.font  = { ...BODY_FONT, italic: true, color: { argb: 'FF999999' } };
       }
     }
 
@@ -331,7 +335,7 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       { header: 'Uploaded At',    key: 'time',    width: 20 },
       { header: 'Uploaded By',    key: 'by',      width: 16 },
       { header: 'Amount Paid',    key: 'amount',  width: 14 },
-      { header: 'Screenshot URL', key: 'shot',    width: 30 },
+      { header: 'Screenshot',     key: 'shot',    width: 22 },
     ]);
     payments.forEach((p, idx) => {
       const row = payWs.addRow({
@@ -345,10 +349,18 @@ router.get('/daily', ...requireRole('ADMIN'), async (req, res) => {
       row.getCell('time').numFmt   = DATETIME_FMT;
       row.getCell('amount').numFmt = CURRENCY_FMT;
 
-      if (p.screenshot_url) {
-        const cell = row.getCell('shot');
-        cell.value = { text: 'View Screenshot', hyperlink: p.screenshot_url };
-        cell.font  = { ...BODY_FONT, color: { argb: 'FF0563C1' }, underline: true };
+      if (p.screenshot_data) {
+        const ext = (p.screenshot_mime || 'image/jpeg').includes('png') ? 'png' : 'jpeg';
+        const imageId = wb.addImage({ buffer: p.screenshot_data, extension: ext });
+        payWs.addImage(imageId, {
+          tl: { col: 4, row: row.number - 1 },
+          ext: { width: 120, height: 90 },
+          editAs: 'oneCell',
+        });
+        row.height = 70;
+      } else {
+        row.getCell('shot').value = 'Expired (31+ days)';
+        row.getCell('shot').font  = { ...BODY_FONT, italic: true, color: { argb: 'FF999999' } };
       }
     });
 
