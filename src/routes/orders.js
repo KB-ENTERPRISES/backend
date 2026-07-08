@@ -454,12 +454,16 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
     await client.query('BEGIN');
 
     const { rows: orderRows } = await client.query(
-      `SELECT total FROM orders WHERE id = $1 AND (assigned_crew_id = $2 OR $3 = 'ADMIN')`,
+      `SELECT total, status FROM orders WHERE id = $1 AND (assigned_crew_id = $2 OR $3 = 'ADMIN')`,
       [id, req.user.crewId || null, req.user.role]
     );
     if (!orderRows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order not found or not assigned to you' });
+    }
+    if (orderRows[0].status === 'COMPLETED') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'This order has already been completed.' });
     }
     const originalTotal = Number(orderRows[0].total);
 
@@ -518,7 +522,7 @@ router.patch('/:id/payment-screenshot', ...requireRole('CREW', 'ADMIN'), async (
            original_total = COALESCE(original_total, total),
            total = $4,
            delivery_note = $5
-       WHERE id = $1 AND (assigned_crew_id = $2 OR $3 = 'ADMIN')
+       WHERE id = $1 AND (assigned_crew_id = $2 OR $3 = 'ADMIN') AND status != 'COMPLETED'
        RETURNING *`,
       [id, req.user.crewId || null, req.user.role, deliveredTotal, rawDescription || null]
     );
