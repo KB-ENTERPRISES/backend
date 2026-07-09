@@ -82,7 +82,10 @@ const orderLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/orders', orderLimiter);
+app.use('/api/orders', (req, res, next) => {
+  if (req.method === 'POST' && req.path === '/') return orderLimiter(req, res, next);
+  next();
+});
 
 // ── Body parsing ──────────────────────────────────────────────────────
 app.use(express.json({ limit: '15mb' }));
