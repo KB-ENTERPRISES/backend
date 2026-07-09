@@ -80,7 +80,7 @@ async function fetchOrders(whereClause = '', params = []) {
 }
 
 // ── POST /orders ─────────────────────────────────────────────────────
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', ...requireRole('USER', 'ADMIN'), async (req, res) => {
   const {
     orderType = 'train',
     userName, trainNo, trainName, currentLocation, eta,
